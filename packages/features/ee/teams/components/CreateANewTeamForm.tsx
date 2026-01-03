@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import posthog from "posthog-js";
 
@@ -13,12 +13,16 @@ import { Button } from "@calcom/ui/components/button";
 import { DialogFooter } from "@calcom/ui/components/dialog";
 import { Form } from "@calcom/ui/components/form";
 import { TextField } from "@calcom/ui/components/form";
+import { Icon } from "@calcom/ui/components/icon";
+import classNames from "@calcom/ui/classNames";
 import { revalidateEventTypesList } from "@calcom/web/app/(use-page-wrapper)/(main-nav)/event-types/actions";
 import { revalidateTeamsList } from "@calcom/web/app/(use-page-wrapper)/(main-nav)/teams/actions";
 
 import { useOrgBranding } from "../../organizations/context/provider";
 import { subdomainSuffix } from "../../organizations/lib/orgDomains";
 import type { NewTeamFormValues } from "../lib/types";
+
+type SlugValidationState = "idle" | "checking" | "available" | "taken";
 
 interface CreateANewTeamFormProps {
   onCancel: () => void;
@@ -32,6 +36,9 @@ export const CreateANewTeamForm = (props: CreateANewTeamFormProps) => {
   const { inDialog, onCancel, slug, submitLabel, onSuccess } = props;
   const { t, isLocaleReady } = useLocale();
   const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(null);
+  const [slugValidationState, setSlugValidationState] = useState<SlugValidationState>("idle");
+  const [slugErrorMessage, setSlugErrorMessage] = useState<string>("");
+  const slugCheckTimeoutRef = useRef<NodeJS.Timeout>();
   const orgBranding = useOrgBranding();
 
   const newTeamFormMethods = useForm<NewTeamFormValues>({
@@ -40,7 +47,54 @@ export const CreateANewTeamForm = (props: CreateANewTeamFormProps) => {
     },
   });
 
+  const currentSlug = newTeamFormMethods.watch("slug");
+
   const utils = trpc.useUtils();
+
+  const validateSlug = useCallback(
+    async (slugToCheck: string) => {
+      if (!slugToCheck || slugToCheck.trim() === "") {
+        setSlugValidationState("idle");
+        setSlugErrorMessage("");
+        return;
+      }
+
+      setSlugValidationState("checking");
+
+      try {
+        const result = await utils.viewer.teams.checkSlugAvailability.fetch({ slug: slugToCheck });
+        if (result.available) {
+          setSlugValidationState("available");
+          setSlugErrorMessage("");
+        } else {
+          setSlugValidationState("taken");
+          setSlugErrorMessage(result.message ? t(result.message) : t("url_taken"));
+        }
+      } catch {
+        // On error, we still allow submission - server will validate
+        setSlugValidationState("idle");
+        setSlugErrorMessage("");
+      }
+    },
+    [utils, t]
+  );
+
+  // Debounce slug validation
+  useEffect(() => {
+    if (slugCheckTimeoutRef.current) {
+      clearTimeout(slugCheckTimeoutRef.current);
+    }
+
+    slugCheckTimeoutRef.current = setTimeout(() => {
+      validateSlug(currentSlug || "");
+    }, 500);
+
+    return () => {
+      if (slugCheckTimeoutRef.current) {
+        clearTimeout(slugCheckTimeoutRef.current);
+      }
+    };
+  }, [currentSlug, validateSlug]);
 
   const createTeamMutation = trpc.viewer.teams.create.useMutation({
     onSuccess: async (data) => {
@@ -69,7 +123,11 @@ export const CreateANewTeamForm = (props: CreateANewTeamFormProps) => {
         {t("cancel")}
       </Button>
       <Button
-        disabled={newTeamFormMethods.formState.isSubmitting || createTeamMutation.isPending}
+        disabled={
+          newTeamFormMethods.formState.isSubmitting ||
+          createTeamMutation.isPending ||
+          slugValidationState === "taken"
+        }
         color="primary"
         EndIcon="arrow-right"
         type="submit"
@@ -141,24 +199,44 @@ export const CreateANewTeamForm = (props: CreateANewTeamFormProps) => {
             control={newTeamFormMethods.control}
             rules={{ required: t("team_url_required") }}
             render={({ field: { value } }) => (
-              <TextField
-                name="slug"
-                placeholder="acme"
-                label={t("team_url")}
-                addOnLeading={`${
-                  orgBranding
-                    ? `${orgBranding.fullDomain.replace("https://", "").replace("http://", "")}/`
-                    : `${subdomainSuffix()}/team/`
-                }`}
-                value={value}
-                defaultValue={value}
-                onChange={(e) => {
-                  newTeamFormMethods.setValue("slug", slugify(e?.target.value, true).replace(/\./g, ""), {
-                    shouldTouch: true,
-                  });
-                  newTeamFormMethods.clearErrors("slug");
-                }}
-              />
+              <div className="flex flex-col gap-1">
+                <TextField
+                  name="slug"
+                  placeholder="acme"
+                  label={t("team_url")}
+                  addOnLeading={`${
+                    orgBranding
+                      ? `${orgBranding.fullDomain.replace("https://", "").replace("http://", "")}/`
+                      : `${subdomainSuffix()}/team/`
+                  }`}
+                  addOnSuffix={
+                    slugValidationState === "checking" ? (
+                      <Icon name="loader" className="text-subtle h-4 w-4 animate-spin" />
+                    ) : slugValidationState === "available" ? (
+                      <Icon name="check" className="text-success h-4 w-4" />
+                    ) : slugValidationState === "taken" ? (
+                      <Icon name="x" className="text-error h-4 w-4" />
+                    ) : undefined
+                  }
+                  value={value}
+                  defaultValue={value}
+                  className={classNames(slugValidationState === "taken" && "border-error")}
+                  onChange={(e) => {
+                    newTeamFormMethods.setValue("slug", slugify(e?.target.value, true).replace(/\./g, ""), {
+                      shouldTouch: true,
+                    });
+                    newTeamFormMethods.clearErrors("slug");
+                    // Reset validation state when user types
+                    setSlugValidationState("idle");
+                  }}
+                />
+                {slugValidationState === "taken" && slugErrorMessage && (
+                  <p className="text-error text-sm">{slugErrorMessage}</p>
+                )}
+                {slugValidationState === "available" && currentSlug && (
+                  <p className="text-success text-sm">{t("url_available") || "This URL is available"}</p>
+                )}
+              </div>
             )}
           />
         </div>

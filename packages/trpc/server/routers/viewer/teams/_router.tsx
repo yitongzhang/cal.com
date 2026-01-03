@@ -6,6 +6,7 @@ import { ZAcceptOrLeaveInputSchema } from "./acceptOrLeave.schema";
 import { ZAddMembersToEventTypes } from "./addMembersToEventTypes.schema";
 import { ZChangeMemberRoleInputSchema } from "./changeMemberRole.schema";
 import { ZCheckIfMembershipExistsInputSchema } from "./checkIfMembershipExists.schema";
+import { ZCheckSlugAvailabilityInputSchema } from "./checkSlugAvailability.schema";
 import { ZCreateInputSchema } from "./create.schema";
 import { ZCreateInviteInputSchema } from "./createInvite.schema";
 import { ZDeleteInputSchema } from "./delete.schema";
@@ -58,6 +59,11 @@ export const viewerTeamsRouter = router({
   create: authedProcedure.input(ZCreateInputSchema).mutation(async ({ ctx, input }) => {
     const { default: handler } = await import("./create.handler");
     return handler({ ctx: { ...ctx, req: ctx.req as NextApiRequest }, input });
+  }),
+  // Check if team slug is available before creating
+  checkSlugAvailability: authedProcedure.input(ZCheckSlugAvailabilityInputSchema).query(async (opts) => {
+    const { default: handler } = await import("./checkSlugAvailability.handler");
+    return handler(opts);
   }),
   // Allows team owner to update team metadata
   update: authedProcedure.input(ZUpdateInputSchema).mutation(async (opts) => {
