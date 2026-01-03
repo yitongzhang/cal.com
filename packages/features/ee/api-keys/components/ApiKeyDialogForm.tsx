@@ -15,6 +15,7 @@ import { Form } from "@calcom/ui/components/form";
 import { TextField } from "@calcom/ui/components/form";
 import { SelectField } from "@calcom/ui/components/form";
 import { Switch } from "@calcom/ui/components/form";
+import { Icon } from "@calcom/ui/components/icon";
 import { showToast } from "@calcom/ui/components/toast";
 import { Tooltip } from "@calcom/ui/components/tooltip";
 import { revalidateApiKeysList } from "@calcom/web/app/(use-page-wrapper)/settings/(settings-layout)/developer/api-keys/actions";
@@ -97,18 +98,28 @@ export default function ApiKeyDialogForm({
       {successfulNewApiKeyModal ? (
         <>
           <div className="mb-6">
-            <h2 className="font-semi-bold font-cal text-emphasis mb-2 text-xl tracking-wide">
-              {t("success_api_key_created")}
-            </h2>
-            <div className="text-emphasis text-sm">
-              <span className="font-semibold">{t("success_api_key_created_bold_tagline")}</span>{" "}
-              {t("you_will_only_view_it_once")}
+            <div className="mb-4 flex items-center gap-2">
+              <div className="bg-success rounded-full p-2">
+                <Icon name="check" className="text-inverted stroke-[3px]" size={16} />
+              </div>
+              <h2 className="font-semi-bold font-cal text-emphasis text-xl tracking-wide">
+                {t("success_api_key_created")}
+              </h2>
+            </div>
+            <div className="bg-attention/10 border-attention rounded-lg border p-3">
+              <div className="flex items-start gap-2">
+                <Icon name="triangle-alert" className="text-attention mt-0.5 shrink-0" size={16} />
+                <div className="text-sm">
+                  <span className="text-emphasis font-semibold">{t("success_api_key_created_bold_tagline")}</span>{" "}
+                  <span className="text-default">{t("you_will_only_view_it_once")}</span>
+                </div>
+              </div>
             </div>
           </div>
           <div>
+            <label className="text-default mb-2 block text-sm font-medium">{t("api_key")}</label>
             <div className="flex">
-              <code className="bg-subtle inline-flex items-center text-default w-full truncate rounded-md rounded-r-none pl-2 pr-2 font-mono">
-                {" "}
+              <code className="bg-subtle text-default inline-flex w-full items-center truncate rounded-md rounded-r-none border border-r-0 py-2 pl-3 pr-2 font-mono text-sm">
                 {apiKey}
               </code>
               <Tooltip side="top" content={t("copy_to_clipboard")}>
@@ -124,7 +135,7 @@ export default function ApiKeyDialogForm({
                 </Button>
               </Tooltip>
             </div>
-            <span className="text-muted text-sm">
+            <span className="text-muted mt-2 block text-sm">
               {apiKeyDetails.neverExpires
                 ? t("never_expires")
                 : `${t("expires")} ${apiKeyDetails?.expiresAt?.toLocaleDateString()}`}
