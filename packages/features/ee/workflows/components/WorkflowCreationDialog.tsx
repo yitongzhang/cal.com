@@ -27,12 +27,23 @@ type WorkflowOptionCardProps = {
 function WorkflowOptionCard(props: WorkflowOptionCardProps) {
   const { title, description, icon, isSelected, onClick, image, iconWrapperClassName, value } = props;
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
     <div
       data-testid={`workflow-option-card-${value}`}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isSelected}
       className={cn(
-        `relative flex flex-1 cursor-pointer flex-col rounded-lg border p-4 transition-colors`,
+        `relative flex flex-1 cursor-pointer flex-col rounded-lg border p-4 transition-colors focus:outline-none focus:ring-2 focus:ring-brand-default focus:ring-offset-2`,
         isSelected ? "border-brand-default" : "border-subtle hover:border-emphasis"
       )}>
       <div className="absolute right-3 top-3">
