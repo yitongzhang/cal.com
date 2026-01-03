@@ -14,7 +14,6 @@ import { DialogFooter } from "@calcom/ui/components/dialog";
 import { Form } from "@calcom/ui/components/form";
 import { TextField } from "@calcom/ui/components/form";
 import { SelectField } from "@calcom/ui/components/form";
-import { Switch } from "@calcom/ui/components/form";
 import { Icon } from "@calcom/ui/components/icon";
 import { showToast } from "@calcom/ui/components/toast";
 import { Tooltip } from "@calcom/ui/components/tooltip";
@@ -47,6 +46,7 @@ export default function ApiKeyDialogForm({
     () => defaultValues?.expiresAt || dayjs().add(30, "day").toDate()
   );
   const [successfulNewApiKeyModal, setSuccessfulNewApiKeyModal] = useState(false);
+  const [hasCopiedKey, setHasCopiedKey] = useState(false);
   const [apiKeyDetails, setApiKeyDetails] = useState({
     expiresAt: null as Date | null,
     note: "" as string | null,
@@ -91,6 +91,10 @@ export default function ApiKeyDialogForm({
       label: t("one_year"),
       value: dayjs().add(1, "year").toDate(),
     },
+    {
+      label: t("never_expires"),
+      value: null,
+    },
   ];
 
   return (
@@ -116,30 +120,49 @@ export default function ApiKeyDialogForm({
               </div>
             </div>
           </div>
-          <div>
-            <label className="text-default mb-2 block text-sm font-medium">{t("api_key")}</label>
-            <div className="flex">
-              <code className="bg-subtle text-default inline-flex w-full items-center truncate rounded-md rounded-r-none border border-r-0 py-2 pl-3 pr-2 font-mono text-sm">
-                {apiKey}
-              </code>
-              <Tooltip side="top" content={t("copy_to_clipboard")}>
-                <Button
-                  onClick={() => {
-                    navigator.clipboard.writeText(apiKey);
-                    showToast(t("api_key_copied"), "success");
-                  }}
-                  type="button"
-                  className="rounded-l-none text-base"
-                  StartIcon="clipboard">
-                  {t("copy")}
-                </Button>
-              </Tooltip>
+          <div className="space-y-4">
+            {apiKeyDetails.note && (
+              <div>
+                <label className="text-subtle mb-1 block text-xs font-medium uppercase tracking-wide">
+                  {t("personal_note")}
+                </label>
+                <p className="text-emphasis text-sm font-medium">{apiKeyDetails.note}</p>
+              </div>
+            )}
+            <div>
+              <label className="text-subtle mb-1 block text-xs font-medium uppercase tracking-wide">
+                {t("api_key")}
+              </label>
+              <div className="flex">
+                <code className="bg-subtle text-default inline-flex w-full items-center truncate rounded-md rounded-r-none border border-r-0 py-2 pl-3 pr-2 font-mono text-sm">
+                  {apiKey}
+                </code>
+                <Tooltip side="top" content={hasCopiedKey ? t("copied") : t("copy_to_clipboard")}>
+                  <Button
+                    onClick={() => {
+                      navigator.clipboard.writeText(apiKey);
+                      setHasCopiedKey(true);
+                      showToast(t("api_key_copied"), "success");
+                    }}
+                    type="button"
+                    color={hasCopiedKey ? "secondary" : "primary"}
+                    className="rounded-l-none text-base"
+                    StartIcon={hasCopiedKey ? "check" : "clipboard"}>
+                    {hasCopiedKey ? t("copied") : t("copy")}
+                  </Button>
+                </Tooltip>
+              </div>
             </div>
-            <span className="text-muted mt-2 block text-sm">
-              {apiKeyDetails.neverExpires
-                ? t("never_expires")
-                : `${t("expires")} ${apiKeyDetails?.expiresAt?.toLocaleDateString()}`}
-            </span>
+            <div>
+              <label className="text-subtle mb-1 block text-xs font-medium uppercase tracking-wide">
+                {t("expiration")}
+              </label>
+              <p className="text-emphasis text-sm">
+                {apiKeyDetails.neverExpires
+                  ? t("never_expires")
+                  : `${t("expires")} ${apiKeyDetails?.expiresAt?.toLocaleDateString()}`}
+              </p>
+            </div>
           </div>
           <DialogFooter showDivider className="relative">
             <Button type="button" color="secondary" onClick={handleClose} tabIndex={-1}>
@@ -205,21 +228,6 @@ export default function ApiKeyDialogForm({
           </div>
           {!defaultValues && (
             <div className="flex flex-col">
-              <div className="flex justify-between py-2">
-                <span className="text-default flex items-center text-sm font-medium">{t("expire_date")}</span>
-                <Controller
-                  name="neverExpires"
-                  control={form.control}
-                  render={({ field: { onChange, value } }) => (
-                    <Switch
-                      label={t("never_expires")}
-                      onCheckedChange={onChange}
-                      checked={value}
-                      disabled={!!defaultValues}
-                    />
-                  )}
-                />
-              </div>
               <Controller
                 name="expiresAt"
                 render={({ field: { onChange } }) => {
@@ -227,6 +235,7 @@ export default function ApiKeyDialogForm({
 
                   return (
                     <SelectField
+                      label={t("expiration_policy")}
                       styles={{
                         singleValue: (baseStyles) =>
                           Object.assign({}, baseStyles, {
@@ -237,22 +246,28 @@ export default function ApiKeyDialogForm({
                             fontSize: "14px",
                           }),
                       }}
-                      isDisabled={watchNeverExpires || !!defaultValues}
+                      isDisabled={!!defaultValues}
                       containerClassName="data-testid-field-type"
                       options={expiresAtOptions}
                       onChange={(option) => {
-                        if (!option) {
+                        if (option === undefined) {
                           return;
                         }
-                        onChange(option.value);
-                        setExpiryDate(option.value);
+                        if (option?.value === null) {
+                          form.setValue("neverExpires", true);
+                          setExpiryDate(null);
+                        } else {
+                          form.setValue("neverExpires", false);
+                          setExpiryDate(option?.value);
+                        }
+                        onChange(option?.value);
                       }}
                       defaultValue={defaultValue}
                     />
                   );
                 }}
               />
-              {!watchNeverExpires && (
+              {!watchNeverExpires && expiryDate && (
                 <span className="text-subtle mt-2 text-xs">
                   {t("api_key_expires_on")}
                   <span className="font-bold"> {dayjs(expiryDate).format("DD-MM-YYYY")}</span>

@@ -1363,6 +1363,8 @@
   "delete_api_key_confirm_title": "Permanently remove this API key from your account?",
   "copy": "Copy",
   "expire_date": "Expiration date",
+  "expiration": "Expiration",
+  "expiration_policy": "Expiration policy",
   "expired": "Expired",
   "never_expires": "Never expires",
   "expires": "Expires",
