@@ -6,7 +6,9 @@ import { useLocale } from "@calcom/lib/hooks/useLocale";
 import type { User } from "@calcom/prisma/client";
 import classNames from "@calcom/ui/classNames";
 import { Avatar } from "@calcom/ui/components/avatar";
+import { Badge } from "@calcom/ui/components/badge";
 import { StepCard } from "@calcom/ui/components/card";
+import { Icon } from "@calcom/ui/components/icon";
 
 import type { TTeams } from "~/apps/installation/[[...step]]/step-view";
 
@@ -27,6 +29,7 @@ type AccountSelectorProps = {
   onClick?: () => void;
   loading: boolean;
   testId: string;
+  isTeam?: boolean;
 };
 
 const AccountSelector: FC<AccountSelectorProps> = ({
@@ -36,15 +39,20 @@ const AccountSelector: FC<AccountSelectorProps> = ({
   onClick,
   loading,
   testId,
+  isTeam = false,
 }) => {
   const { t } = useLocale();
   const [selected, setSelected] = useState(false);
+  const isSelecting = selected && loading;
+
   return (
     <div
       className={classNames(
-        "hover:bg-cal-muted flex cursor-pointer flex-row items-center gap-2 p-1",
-        (alreadyInstalled || loading) && "cursor-not-allowed",
-        selected && loading && "bg-cal-muted animate-pulse"
+        "hover:bg-muted flex cursor-pointer flex-row items-center justify-between gap-2 rounded-md border p-3 transition-all duration-200",
+        "border-subtle hover:border-emphasis",
+        (alreadyInstalled || loading) && "cursor-not-allowed opacity-60",
+        isSelecting && "bg-muted border-emphasis animate-pulse",
+        !alreadyInstalled && !loading && "hover:shadow-sm"
       )}
       data-testid={testId}
       onClick={() => {
@@ -53,14 +61,34 @@ const AccountSelector: FC<AccountSelectorProps> = ({
           onClick();
         }
       }}>
-      <Avatar
-        alt={avatar || ""}
-        imageSrc={getPlaceholderAvatar(avatar, name)} // if no image, use default avatar
-        size="sm"
-      />
-      <div className="text-md text-subtle pt-0.5 font-medium">
-        {name}
-        {alreadyInstalled ? <span className="text-subtle ml-2 text-sm">({t("already_installed")})</span> : ""}
+      <div className="flex items-center gap-3">
+        <Avatar
+          alt={avatar || ""}
+          imageSrc={getPlaceholderAvatar(avatar, name)}
+          size="sm"
+        />
+        <div className="flex flex-col">
+          <div className="text-emphasis text-sm font-medium">{name}</div>
+          <div className="text-subtle text-xs">
+            {isTeam ? t("team_account") : t("personal_account")}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {alreadyInstalled ? (
+          <Badge variant="success" className="flex items-center gap-1">
+            <Icon name="check" className="h-3 w-3" />
+            {t("installed")}
+          </Badge>
+        ) : isSelecting ? (
+          <div className="flex items-center gap-2 text-sm text-emphasis">
+            <Icon name="loader" className="h-4 w-4 animate-spin" />
+            {t("connecting")}
+          </div>
+        ) : (
+          <Icon name="chevron-right" className="text-subtle h-4 w-4" />
+        )}
       </div>
     </div>
   );
@@ -76,8 +104,13 @@ export const AccountsStepCard: FC<AccountStepCardProps> = ({
   const { t } = useLocale();
   return (
     <StepCard>
-      <div className="text-subtle text-sm font-medium">{t("install_app_on")}</div>
-      <div className={classNames("mt-2 flex flex-col gap-2 ")}>
+      <div className="mb-4">
+        <div className="text-emphasis text-sm font-medium">{t("install_app_on")}</div>
+        <p className="text-subtle mt-1 text-xs">
+          {t("select_account_to_install_app")}
+        </p>
+      </div>
+      <div className={classNames("flex flex-col gap-2")}>
         <AccountSelector
           testId="install-app-button-personal"
           avatar={personalAccount.avatarUrl ?? ""}
@@ -85,6 +118,7 @@ export const AccountsStepCard: FC<AccountStepCardProps> = ({
           alreadyInstalled={personalAccount.alreadyInstalled}
           onClick={() => onSelect()}
           loading={loading}
+          isTeam={false}
         />
         {installableOnTeams &&
           teams?.map((team) => (
@@ -96,9 +130,20 @@ export const AccountsStepCard: FC<AccountStepCardProps> = ({
               name={team.name}
               onClick={() => onSelect(team.id)}
               loading={loading}
+              isTeam={true}
             />
           ))}
       </div>
+
+      {/* Help text for team installs */}
+      {installableOnTeams && teams && teams.length > 0 && (
+        <div className="bg-subtle mt-4 flex items-start gap-2 rounded-md p-3">
+          <Icon name="info" className="text-subtle mt-0.5 h-4 w-4 flex-shrink-0" />
+          <p className="text-subtle text-xs">
+            {t("team_install_info")}
+          </p>
+        </div>
+      )}
     </StepCard>
   );
 };

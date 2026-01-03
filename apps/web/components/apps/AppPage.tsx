@@ -17,6 +17,7 @@ import { useLocale } from "@calcom/lib/hooks/useLocale";
 import { trpc, type RouterOutputs } from "@calcom/trpc/react";
 import type { App as AppType } from "@calcom/types/App";
 import classNames from "@calcom/ui/classNames";
+import { Alert } from "@calcom/ui/components/alert";
 import { Badge } from "@calcom/ui/components/badge";
 import { Button } from "@calcom/ui/components/button";
 import { Icon } from "@calcom/ui/components/icon";
@@ -25,6 +26,8 @@ import { showToast } from "@calcom/ui/components/toast";
 
 import { InstallAppButtonChild } from "./InstallAppButtonChild";
 import { MultiDisconnectIntegration } from "./MultiDisconnectIntegration";
+
+type InstallState = "not_installed" | "installing" | "installed" | "error";
 
 export type AppPageProps = {
   name: string;
@@ -88,15 +91,31 @@ export const AppPage = ({
   const hasDescriptionItems = descriptionItems && descriptionItems.length > 0;
   const utils = trpc.useUtils();
 
+  // Track installation state for better UX feedback
+  const [installState, setInstallState] = useState<InstallState>("not_installed");
+  const [installError, setInstallError] = useState<string | null>(null);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
   const mutation = useAddAppMutation(null, {
     onSuccess: async (data) => {
-      if (data?.setupPending) return;
+      if (data?.setupPending) {
+        // OAuth flow or setup page - keep installing state
+        return;
+      }
+      setInstallState("installed");
+      setInstallError(null);
       setIsLoading(false);
+      setShowSuccessMessage(true);
       showToast(data?.message || t("app_successfully_installed"), "success");
       await utils.viewer.apps.appCredentialsByType.invalidate({ appType: type });
+      // Hide success message after 5 seconds
+      setTimeout(() => setShowSuccessMessage(false), 5000);
     },
     onError: (error) => {
-      if (error instanceof Error) showToast(error.message || t("app_could_not_be_installed"), "error");
+      setInstallState("error");
+      const errorMsg = error instanceof Error ? error.message : t("app_could_not_be_installed");
+      setInstallError(errorMsg);
+      showToast(errorMsg, "error");
       setIsLoading(false);
     },
   });
@@ -107,6 +126,14 @@ export const AppPage = ({
    * which is caused by heavy queries in getServersideProps. This causes the loader to turn off before the page changes.
    */
   const [isLoading, setIsLoading] = useState<boolean>(mutation.isPending);
+
+  // Update install state when loading changes
+  useEffect(() => {
+    if (isLoading) {
+      setInstallState("installing");
+      setInstallError(null);
+    }
+  }, [isLoading]);
   const availableForTeams = doesAppSupportTeamInstall({
     appCategories: categories,
     concurrentMeetings: concurrentMeetings,
@@ -232,7 +259,15 @@ export const AppPage = ({
               loading: isLoading,
             };
           }
-          return <InstallAppButtonChild multiInstall paid={paid} {...props} />;
+          return (
+            <InstallAppButtonChild
+              multiInstall
+              paid={paid}
+              installState={installState}
+              errorMessage={installError || undefined}
+              {...props}
+            />
+          );
         }}
       />
     );
@@ -257,6 +292,8 @@ export const AppPage = ({
             <InstallAppButtonChild
               credentials={availableForTeams ? undefined : appDbQuery.data?.credentials}
               paid={paid}
+              installState={installState}
+              errorMessage={installError || undefined}
               {...props}
             />
           );
@@ -265,38 +302,76 @@ export const AppPage = ({
     );
 
     return (
-      <div className="flex items-center space-x-3">
-        {isGlobal ||
-          (existingCredentials.length > 0 && allowedMultipleInstalls ? (
-            <div className="flex space-x-3">
-              <Button StartIcon="check" color="secondary" disabled>
-                {existingCredentials.length > 0
-                  ? t("active_install", { count: existingCredentials.length })
-                  : t("default")}
-              </Button>
-              {!isGlobal && !appInstalledForAllTargets && MultiInstallButtonEl}
-            </div>
-          ) : (
-            !appInstalledForAllTargets && SingleInstallButtonEl
-          ))}
-
-        {existingCredentials.length > 0 && (
-          <>
-            {existingCredentials.length > 1 ? (
-              <MultiDisconnectIntegration
-                credentials={existingCredentials}
-                onSuccess={() => appDbQuery.refetch()}
-              />
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center space-x-3">
+          {isGlobal ||
+            (existingCredentials.length > 0 && allowedMultipleInstalls ? (
+              <div className="flex space-x-3">
+                <Button StartIcon="check" color="secondary" disabled>
+                  {existingCredentials.length > 0
+                    ? t("active_install", { count: existingCredentials.length })
+                    : t("default")}
+                </Button>
+                {!isGlobal && !appInstalledForAllTargets && MultiInstallButtonEl}
+              </div>
             ) : (
-              <DisconnectIntegration
-                buttonProps={{ color: "secondary" }}
-                label={t("disconnect")}
-                credentialId={Number(existingCredentials[0].id)}
-                teamId={existingCredentials[0].teamId}
-                onSuccess={() => appDbQuery.refetch()}
-              />
-            )}
-          </>
+              !appInstalledForAllTargets && SingleInstallButtonEl
+            ))}
+
+          {existingCredentials.length > 0 && (
+            <>
+              {existingCredentials.length > 1 ? (
+                <MultiDisconnectIntegration
+                  credentials={existingCredentials}
+                  onSuccess={() => {
+                    setInstallState("not_installed");
+                    appDbQuery.refetch();
+                  }}
+                />
+              ) : (
+                <DisconnectIntegration
+                  buttonProps={{ color: "secondary" }}
+                  label={t("disconnect")}
+                  credentialId={Number(existingCredentials[0].id)}
+                  teamId={existingCredentials[0].teamId}
+                  onSuccess={() => {
+                    setInstallState("not_installed");
+                    appDbQuery.refetch();
+                  }}
+                />
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Success message alert */}
+        {showSuccessMessage && (
+          <Alert
+            severity="success"
+            title={t("app_successfully_installed")}
+            message={t("app_is_now_connected_and_ready")}
+            className="animate-fade-in"
+          />
+        )}
+
+        {/* Error message alert */}
+        {installState === "error" && installError && (
+          <Alert
+            severity="error"
+            title={t("installation_failed")}
+            message={installError}
+            actions={
+              <Button
+                color="secondary"
+                size="sm"
+                onClick={() => {
+                  setInstallState("not_installed");
+                  setInstallError(null);
+                }}>
+                {t("try_again")}
+              </Button>
+            }
+          />
         )}
       </div>
     );
